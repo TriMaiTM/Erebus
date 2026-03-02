@@ -1,14 +1,15 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom'; // Thêm useParams, useNavigate
+import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { projectService } from '../features/projects/api/projectService';
 import { Button } from '../components/ui/Button';
-import { Loader2, Camera, User, Save, Trash2, AlertTriangle, X } from 'lucide-react'; // Thêm icon
-import { useQueryClient, useQuery, useMutation } from '@tanstack/react-query'; // Thêm useQuery, useMutation
-import { ConfirmDialog } from '../components/ui/ConfirmDialog'; // Import ConfirmDialog
+// 🔥 Thêm LogOut vào import
+import { Loader2, Camera, User, Save, Trash2, AlertTriangle, X, LogOut } from 'lucide-react';
+import { useQueryClient, useQuery, useMutation } from '@tanstack/react-query';
+import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 
 export const SettingsPage = () => {
-    const { workspaceId } = useParams(); // Lấy workspaceId từ URL
+    const { workspaceId } = useParams();
     const navigate = useNavigate();
     const queryClient = useQueryClient();
 
@@ -25,7 +26,7 @@ export const SettingsPage = () => {
     const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
     const [isErrorModalOpen, setIsErrorModalOpen] = useState(false);
 
-    // 1. Fetch Workspace Info (để check Owner)
+    // 1. Fetch Workspace Info
     const { data: workspace } = useQuery({
         queryKey: ['workspace', workspaceId],
         queryFn: () => workspaceId ? projectService.getWorkspaceDetails(workspaceId) : null,
@@ -37,7 +38,7 @@ export const SettingsPage = () => {
         const loadProfile = async () => {
             const { data: { user } } = await supabase.auth.getUser();
             if (user) {
-                setCurrentUserId(user.id); // Lưu lại ID để so sánh quyền Owner
+                setCurrentUserId(user.id);
                 setEmail(user.email || '');
                 const { data: profile } = await supabase
                     .from('profiles')
@@ -55,7 +56,6 @@ export const SettingsPage = () => {
         loadProfile();
     }, []);
 
-    // ... (Giữ nguyên logic upload ảnh và save profile cũ của bạn) ...
     const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
         if (!e.target.files || e.target.files.length === 0) return;
         try {
@@ -82,19 +82,28 @@ export const SettingsPage = () => {
         }
     };
 
+    // 🔥 Hàm xử lý đăng xuất
+    const handleLogout = async () => {
+        const { error } = await supabase.auth.signOut();
+        if (error) {
+            console.error("Lỗi đăng xuất:", error.message);
+        } else {
+            queryClient.clear(); // Xóa sạch data cache cũ đi cho an toàn
+            navigate('/login');
+        }
+    };
+
     // 3. Logic Xóa Workspace
     const deleteMutation = useMutation({
         mutationFn: () => projectService.deleteWorkspace(workspaceId!),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['workspaces'] });
-            navigate('/'); // Xóa xong về trang chủ
+            navigate('/');
         }
     });
 
     const handleDeleteClick = () => {
         if (!workspace || !currentUserId) return;
-
-        // CHECK QUYỀN OWNER
         if (workspace.owner_id === currentUserId) {
             setIsDeleteDialogOpen(true);
         } else {
@@ -105,7 +114,7 @@ export const SettingsPage = () => {
     if (loading) return <div className="p-8 text-gray-500">Loading...</div>;
 
     return (
-        <div className="h-full flex flex-col bg-[#0F1117] text-gray-300 overflow-y-auto">
+        <div className="h-full flex flex-col bg-[#0F1117] text-gray-300 overflow-y-auto custom-scrollbar">
             <div className="flex-none px-8 py-8 border-b border-white/5">
                 <h1 className="text-2xl font-bold text-white mb-1">Settings</h1>
                 <p className="text-sm text-gray-500">Manage your profile and workspace preferences.</p>
@@ -163,14 +172,23 @@ export const SettingsPage = () => {
                         </div>
                     </div>
 
-                    <div className="pt-6 border-t border-white/5">
+                    {/* 🔥 Khu vực nút bấm đã được sửa lại (thêm Log out) */}
+                    <div className="pt-6 border-t border-white/5 flex items-center gap-4">
                         <Button onClick={handleSave} isLoading={saving} className="flex items-center gap-2">
                             <Save size={16} /> Save Changes
                         </Button>
+
+                        <button
+                            onClick={handleLogout}
+                            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-400 bg-transparent border border-white/10 rounded-md hover:bg-white/5 hover:text-gray-200 transition-all"
+                        >
+                            <LogOut size={16} />
+                            Log out
+                        </button>
                     </div>
                 </section>
 
-                {/* === SECTION 2: WORKSPACE SETTINGS (Chỉ hiện khi đang ở trong Workspace) === */}
+                {/* === SECTION 2: WORKSPACE SETTINGS === */}
                 {workspaceId && (
                     <section className="pt-8 border-t border-white/10">
                         <h2 className="text-lg font-semibold text-white mb-6">Workspace Settings</h2>
@@ -205,8 +223,6 @@ export const SettingsPage = () => {
             </div>
 
             {/* === MODALS === */}
-
-            {/* 1. Modal Xác nhận xóa (Cho Owner) */}
             <ConfirmDialog
                 isOpen={isDeleteDialogOpen}
                 onClose={() => setIsDeleteDialogOpen(false)}
@@ -217,7 +233,6 @@ export const SettingsPage = () => {
                 confirmText="Yes, delete it"
             />
 
-            {/* 2. Modal Báo lỗi (Cho Member) */}
             {isErrorModalOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
                     <div className="w-full max-w-sm bg-[#1e2029] border border-white/10 rounded-xl p-6 shadow-2xl animate-in zoom-in-95 text-center">
