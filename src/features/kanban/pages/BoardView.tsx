@@ -15,6 +15,7 @@ import { UserAvatars } from '../components/UserAvatars';
 // 🔥 1. Import mới
 import { ViewOptions } from '../components/ViewOptions';
 import { ListView } from '../components/ListView';
+import { TaskFilterMenu, type FilterState } from '../components/TaskFilterMenu';
 
 import {
     DndContext,
@@ -60,6 +61,13 @@ export const BoardView = () => {
     // 🔥 2. State quản lý chế độ hiển thị (Board / List)
     const [viewMode, setViewMode] = useState<'board' | 'list'>('board');
 
+    const [taskFilters, setTaskFilters] = useState<FilterState>({
+        status: [],
+        assignee: [],
+        priority: [],
+        dueDate: []
+    });
+
     // --- STATE ---
     const [columns, setColumns] = useState<any[]>([]);
 
@@ -88,6 +96,11 @@ export const BoardView = () => {
         queryKey: ['project', projectId],
         queryFn: () => projectId ? projectService.getProjectDetails(projectId) : null,
         enabled: !!projectId
+    });
+
+    const { data: profiles } = useQuery({
+        queryKey: ['profiles'],
+        queryFn: projectService.getProfiles,
     });
 
     // Hàm xử lý xóa
@@ -216,9 +229,34 @@ export const BoardView = () => {
         ...col,
         tasks: col.tasks?.filter((task: any) => {
             if (!task) return false;
+
+            // 1. Lọc theo Search Query cũ
             const matchesSearch = !searchQuery || task.title.toLowerCase().includes(searchQuery.toLowerCase());
-            const matchesPriority = !priorityFilter || priorityFilter === 'ALL' || task.priority === priorityFilter;
-            return matchesSearch && matchesPriority;
+
+            // 2. Lọc theo Status mới
+            const matchesStatus = taskFilters.status.length === 0 || taskFilters.status.includes(col.id);
+
+            // 3. Lọc theo Assignee mới
+            const matchesAssignee = taskFilters.assignee.length === 0 ||
+                (taskFilters.assignee.includes('unassigned') && !task.assignee_id) ||
+                taskFilters.assignee.includes(task.assignee_id);
+
+            // 4. Lọc theo Priority (Kết hợp cũ và mới để không phá vỡ logic cũ nếu có)
+            const matchesPriorityMenu = taskFilters.priority.length === 0 || taskFilters.priority.includes(task.priority);
+            const matchesOldPriority = !priorityFilter || priorityFilter === 'ALL' || task.priority === priorityFilter;
+
+            // 5. Lọc theo Due Date
+            let matchesDate = true;
+            if (taskFilters.dueDate.length > 0) {
+                const hasDate = !!task.due_date;
+                const isOverdue = hasDate && new Date(task.due_date) < new Date();
+
+                matchesDate = false;
+                if (taskFilters.dueDate.includes('has_date') && hasDate) matchesDate = true;
+                if (taskFilters.dueDate.includes('overdue') && isOverdue) matchesDate = true;
+            }
+
+            return matchesSearch && matchesStatus && matchesAssignee && matchesPriorityMenu && matchesOldPriority && matchesDate;
         }) || [],
     }));
 
@@ -412,9 +450,30 @@ export const BoardView = () => {
                     </div>
 
                     <div className="flex items-center gap-3">
-                        {/* 🔥 3. Nút chuyển đổi View */}
-                        <ViewOptions viewMode={viewMode} setViewMode={setViewMode} />
-                        <UserAvatars users={users} />
+
+                        {/* 🔥 1. GỘP CÁC NÚT ĐIỀU KHIỂN (FILTER, DISPLAY) THÀNH MỘT NHÓM "TOOLBAR CONTROLS" */}
+                        <div className="flex items-center gap-1 border border-white/5 rounded-md p-0.5 bg-black/10">
+
+                            {/* Component Filter mới (đã sửa style ở Bước 1) */}
+                            <TaskFilterMenu
+                                columns={columns}
+                                profiles={profiles || []}
+                                filters={taskFilters}
+                                setFilters={setTaskFilters}
+                            />
+
+                            {/* Vạch kẻ đứng phân cách (Optional nhưng Linear rất hay có cái này) */}
+                            <div className="w-px h-4 bg-white/5" />
+
+                            {/* Nút ViewOptions (Display) cũ của bạn */}
+                            <ViewOptions viewMode={viewMode} setViewMode={setViewMode} />
+                        </div>
+
+                        {/* 🔥 2. TẠO KHOẢNG TRỐNG (GAP-4) ĐỂ ĐẨY USER AVATARS RA, KHÔNG BỊ CHÈN ÉP */}
+                        <div className="ml-1"> {/* Thêm tí margin để tách biệt control group */}
+                            <UserAvatars users={users} />
+                        </div>
+
                     </div>
                 </div>
 
